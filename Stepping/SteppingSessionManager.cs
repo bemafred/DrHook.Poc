@@ -1,0 +1,244 @@
+using System.Diagnostics;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+
+namespace DrHook.Poc.Stepping;
+
+/// <summary>
+/// Manages a single controlled stepping session via DAP/netcoredbg.
+///
+/// This is where Claude Code steps through code line by line and narrates
+/// what it sees in the terminal. The core of the "Inspect" discipline.
+///
+/// Each operation captures a hypothesis (when provided) so that the
+/// delta between expectation and reality is part of the record.
+/// </summary>
+public sealed class SteppingSessionManager
+{
+    private DapClient? _client;
+    private int _activeThreadId;
+    private string? _sessionHypothesis;
+    private string? _targetVersion;
+    private int _stepCount;
+
+    public bool IsActive => _client?.IsConnected == true;
+
+    public async Task<string> LaunchAsync(int pid, string sourceFile, int line, string hypothesis, CancellationToken ct)
+    {
+        if (IsActive)
+            return Error("A stepping session is already active. Use drhook:step-stop first.");
+
+        // Capture target version for anchoring
+        try
+        {
+            var proc = Process.GetProcessById(pid);
+            _targetVersion = proc.MainModule?.FileVersionInfo.FileVersion ?? "unknown";
+        }
+        catch
+        {
+            _targetVersion = "unknown";
+        }
+
+        var netcoredbgPath = NetCoreDbgLocator.LocateOrThrow();
+
+        _client = new DapClient();
+        _sessionHypothesis = hypothesis;
+        _stepCount = 0;
+
+        try
+        {
+            await _client.LaunchAsync(netcoredbgPath, ct);
+            await _client.AttachAsync(pid, ct);
+            await _client.SetBreakpointAsync(sourceFile, line, ct);
+
+            // Get threads to find the main thread
+            var threads = await _client.GetThreadsAsync(ct);
+            var threadArray = threads["threads"] as JsonArray;
+            _activeThreadId = threadArray?[0]?["id"]?.GetValue<int>() ?? 1;
+
+            // Continue execution until breakpoint hit
+            await _client.ContinueAsync(_activeThreadId, ct);
+
+            // Small delay for breakpoint to hit
+            await Task.Delay(500, ct);
+
+            // Get current state
+            var state = await GetCurrentStateAsync(ct);
+
+            return JsonSerializer.Serialize(new JsonObject
+            {
+                ["status"] = "attached",
+                ["pid"] = pid,
+                ["assemblyVersion"] = _targetVersion,
+                ["breakpoint"] = new JsonObject { ["file"] = sourceFile, ["line"] = line },
+                ["hypothesis"] = hypothesis,
+                ["currentState"] = state,
+                ["instruction"] = "Use drhook:step-next to advance one line. Use drhook:step-vars for variable details."
+            }, new JsonSerializerOptions { WriteIndented = true });
+        }
+        catch (Exception ex)
+        {
+            await CleanupAsync();
+            return Error($"Failed to launch stepping session: {ex.Message}");
+        }
+    }
+
+    public async Task<string> StepNextAsync(string? hypothesis, CancellationToken ct)
+    {
+        if (!IsActive || _client is null)
+            return Error("No active stepping session. Use drhook:step-launch first.");
+
+        try
+        {
+            _stepCount++;
+            await _client.StepNextAsync(_activeThreadId, ct);
+
+            // Small delay for step to complete
+            await Task.Delay(200, ct);
+
+            var state = await GetCurrentStateAsync(ct);
+
+            var result = new JsonObject
+            {
+                ["step"] = _stepCount,
+                ["assemblyVersion"] = _targetVersion,
+                ["currentState"] = state,
+            };
+
+            if (hypothesis is not null)
+                result["hypothesis"] = hypothesis;
+
+            result["prompt"] = hypothesis is not null
+                ? $"Step {_stepCount} complete. Compare state with hypothesis: \"{hypothesis}\""
+                : $"Step {_stepCount} complete. Describe what you observe and whether it matches expectations.";
+
+            return JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true });
+        }
+        catch (Exception ex)
+        {
+            return Error($"Step failed: {ex.Message}");
+        }
+    }
+
+    public async Task<string> InspectVariablesAsync(int depth, CancellationToken ct)
+    {
+        if (!IsActive || _client is null)
+            return Error("No active stepping session. Use drhook:step-launch first.");
+
+        try
+        {
+            var stackTrace = await _client.GetStackTraceAsync(_activeThreadId, ct);
+            var frames = stackTrace["stackFrames"] as JsonArray;
+            if (frames is null || frames.Count == 0)
+                return Error("No stack frames available.");
+
+            var topFrameId = frames[0]?["id"]?.GetValue<int>() ?? 0;
+            var scopes = await _client.GetScopesAsync(topFrameId, ct);
+            var scopeArray = scopes["scopes"] as JsonArray;
+
+            var allVars = new JsonArray();
+
+            if (scopeArray is not null)
+            {
+                foreach (var scope in scopeArray)
+                {
+                    var varRef = scope?["variablesReference"]?.GetValue<int>() ?? 0;
+                    if (varRef <= 0) continue;
+
+                    var scopeName = scope?["name"]?.GetValue<string>() ?? "unknown";
+                    var vars = await _client.GetVariablesAsync(varRef, ct);
+                    var variables = vars["variables"] as JsonArray;
+
+                    if (variables is not null)
+                    {
+                        foreach (var v in variables)
+                        {
+                            allVars.Add(new JsonObject
+                            {
+                                ["scope"] = scopeName,
+                                ["name"] = v?["name"]?.DeepClone(),
+                                ["value"] = v?["value"]?.DeepClone(),
+                                ["type"] = v?["type"]?.DeepClone(),
+                            });
+                        }
+                    }
+                }
+            }
+
+            return JsonSerializer.Serialize(new JsonObject
+            {
+                ["step"] = _stepCount,
+                ["variableCount"] = allVars.Count,
+                ["variables"] = allVars
+            }, new JsonSerializerOptions { WriteIndented = true });
+        }
+        catch (Exception ex)
+        {
+            return Error($"Variable inspection failed: {ex.Message}");
+        }
+    }
+
+    public async Task<string> StopAsync(CancellationToken ct)
+    {
+        if (!IsActive)
+            return Error("No active stepping session.");
+
+        var summary = new JsonObject
+        {
+            ["status"] = "stopped",
+            ["totalSteps"] = _stepCount,
+            ["sessionHypothesis"] = _sessionHypothesis,
+            ["assemblyVersion"] = _targetVersion,
+            ["prompt"] = $"Session complete after {_stepCount} steps. " +
+                         $"Did the observations confirm or challenge the hypothesis: \"{_sessionHypothesis}\"?"
+        };
+
+        await CleanupAsync();
+
+        return JsonSerializer.Serialize(summary, new JsonSerializerOptions { WriteIndented = true });
+    }
+
+    private async Task<JsonObject> GetCurrentStateAsync(CancellationToken ct)
+    {
+        if (_client is null) return new JsonObject { ["error"] = "No client" };
+
+        var stackTrace = await _client.GetStackTraceAsync(_activeThreadId, ct);
+        var frames = stackTrace["stackFrames"] as JsonArray;
+
+        if (frames is null || frames.Count == 0)
+            return new JsonObject { ["location"] = "unknown" };
+
+        var topFrame = frames[0] as JsonObject;
+        var source = topFrame?["source"] as JsonObject;
+
+        return new JsonObject
+        {
+            ["file"] = source?["path"]?.DeepClone(),
+            ["line"] = topFrame?["line"]?.DeepClone(),
+            ["column"] = topFrame?["column"]?.DeepClone(),
+            ["functionName"] = topFrame?["name"]?.DeepClone(),
+            ["callStackDepth"] = frames.Count,
+            ["topFrames"] = new JsonArray(frames.Take(5).Select(f => (JsonNode)new JsonObject
+            {
+                ["name"] = f?["name"]?.DeepClone(),
+                ["line"] = f?["line"]?.DeepClone(),
+            }).ToArray())
+        };
+    }
+
+    private async Task CleanupAsync()
+    {
+        if (_client is not null)
+        {
+            await _client.DisposeAsync();
+            _client = null;
+        }
+        _activeThreadId = 0;
+        _sessionHypothesis = null;
+        _targetVersion = null;
+        _stepCount = 0;
+    }
+
+    private static string Error(string message) =>
+        JsonSerializer.Serialize(new JsonObject { ["error"] = message });
+}

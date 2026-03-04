@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <WarningsAsErrors />
+    <AssemblyName>DrHook.Poc</AssemblyName>
+    <RootNamespace>DrHook.Poc</RootNamespace>
+    <Description>DrHook Proof of Concept — .NET runtime inspection and controlled stepping via MCP stdio</Description>
+  </PropertyGroup>
+
+  <!--
+    Sovereignty notes:
+
+    Microsoft.Diagnostics.NETCore.Client — official Microsoft client for the .NET runtime
+    diagnostic IPC protocol. Not a third-party wrapper. IS the protocol client.
+    Used for EventPipe passive observation (Layer: Observation).
+
+    netcoredbg — Samsung's open-source (MIT) .NET debugger. Speaks DAP over stdio.
+    Used for controlled stepping (Layer: Stepping). Not bundled — discovered at runtime.
+    netcoredbg is the BLUEPRINT for its own replacement: a future sovereign C# port
+    (DrHook.Engine) via P/Invoke to dbgshim, following the same interop pattern
+    proven by Minerva.Interop.Poc.
+
+    The true sovereign surface is dbgshim, which ships with every .NET runtime.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Diagnostics.NETCore.Client" Version="0.2.*" />
+  </ItemGroup>
+
+</Project>
