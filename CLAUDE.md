@@ -22,7 +22,7 @@ dotnet run --project DrHook.Poc
 dotnet run --project DrHook.Poc/Host/SteppingHost.cs
 ```
 
-**Prerequisites:** .NET 10 SDK, `netcoredbg` on PATH (or set `DRHOOK_NETCOREDBG_PATH`).
+**Prerequisites:** .NET 10 SDK, `netcoredbg` on PATH (or set `DRHOOK_NETCOREDBG_PATH`). Apple Silicon Macs require building netcoredbg from source — see `docs/getting-started.md`.
 
 No test project exists. No solution file — single `.csproj` at root.
 

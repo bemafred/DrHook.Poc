@@ -140,6 +140,8 @@ The .NET runtime exposes a diagnostic IPC channel via `DOTNET_DiagnosticPorts`. 
 
 netcoredbg (Samsung, MIT license) is used for controlled stepping. It interfaces with dbgshim and ICorDebug (the CLR's native debugging interface) and exposes DAP over stdio.
 
+**Apple Silicon note:** Samsung does not publish pre-built ARM64 macOS binaries. On Apple Silicon Macs, netcoredbg must be built from source (CMake + clang). Rosetta 2 is not viable — an x86_64 netcoredbg cannot attach to an ARM64 .NET process because the CoreCLR debugging libraries (dbgshim, mscordbi) must match the host architecture. See [Getting Started](../getting-started.md#netcoredbg-platform-details) for build instructions.
+
 **Critical insight: netcoredbg is the blueprint for its own replacement.**
 
 The C++ source (~50K lines) documents exactly which ICorDebug methods to call, in what order, with what state transitions. A sovereign C# port — **DrHook.Engine** — would reimplement this logic via P/Invoke to dbgshim, following the same interop pattern proven by Minerva.Interop.Poc (Metal/CUDA/Accelerate via P/Invoke).

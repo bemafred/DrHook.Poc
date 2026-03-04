@@ -72,6 +72,7 @@ Every observation tool requires a **hypothesis** — state what you expect befor
 
 - .NET 10 SDK
 - [netcoredbg](https://github.com/Samsung/netcoredbg) installed and on PATH (for stepping layer)
+  - **Apple Silicon (M1/M2/M3/M4):** must be [built from source](docs/getting-started.md#netcoredbg-platform-details) — no pre-built ARM64 binaries are published
 
 ### 1. Add to Claude Code
 

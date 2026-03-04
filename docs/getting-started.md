@@ -22,19 +22,41 @@ Once registered, Claude Code gains 13 diagnostic tools — the "Inspect" step af
 | Tool | macOS | Windows | Linux |
 |------|-------|---------|-------|
 | .NET 10 SDK | `brew install dotnet-sdk` or [download](https://dotnet.microsoft.com/download) | `winget install Microsoft.DotNet.SDK.10` or [download](https://dotnet.microsoft.com/download) | `apt install dotnet-sdk-10.0` / `dnf install dotnet-sdk-10.0` or [download](https://dotnet.microsoft.com/download) |
-| netcoredbg | `brew install netcoredbg` or [GitHub release](https://github.com/Samsung/netcoredbg/releases) | [GitHub release](https://github.com/Samsung/netcoredbg/releases) → extract to a directory on PATH | [GitHub release](https://github.com/Samsung/netcoredbg/releases) → extract to `/usr/local/netcoredbg/` |
+| netcoredbg | **Apple Silicon: build from source** (see below). Intel: `brew install netcoredbg` or [GitHub release](https://github.com/Samsung/netcoredbg/releases) | [GitHub release](https://github.com/Samsung/netcoredbg/releases) → extract to a directory on PATH | [GitHub release](https://github.com/Samsung/netcoredbg/releases) → extract to `/usr/local/netcoredbg/` |
 | Claude Code | `npm i -g @anthropic-ai/claude-code` | `npm i -g @anthropic-ai/claude-code` | `npm i -g @anthropic-ai/claude-code` |
 | Git | Pre-installed (Xcode CLT) | `winget install Git.Git` | `apt install git` / `dnf install git` |
 
 ### netcoredbg platform details
 
-**macOS (Homebrew):**
+**macOS — Apple Silicon (build from source, required):**
+
+Samsung does not publish pre-built netcoredbg binaries for Apple Silicon (ARM64/aarch64). Homebrew formulae and GitHub release assets target x86_64 only. You must build from source:
+
 ```bash
-brew install netcoredbg
-# Installs to /opt/homebrew/bin/netcoredbg (Apple Silicon) or /usr/local/bin/netcoredbg (Intel)
+# Prerequisites: CMake, .NET SDK, Xcode command-line tools
+brew install cmake
+
+# Clone and build
+git clone https://github.com/Samsung/netcoredbg.git
+cd netcoredbg
+mkdir build && cd build
+CC=clang CXX=clang++ cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local/netcoredbg
+make -j$(sysctl -n hw.ncpu)
+sudo make install
+
+# Symlink to PATH
+sudo ln -sf /usr/local/netcoredbg/netcoredbg /usr/local/bin/netcoredbg
 ```
 
-**macOS (manual):**
+> **Why:** netcoredbg links against the CoreCLR debugging libraries (dbgshim, mscordbi) which must match the host architecture. Running an x86_64 binary under Rosetta 2 fails because it cannot attach to an ARM64 .NET process.
+
+**macOS — Intel:**
+```bash
+brew install netcoredbg
+# Installs to /usr/local/bin/netcoredbg
+```
+
+**macOS — Intel (manual):**
 ```bash
 # Download from https://github.com/Samsung/netcoredbg/releases
 # Extract and move to a location on PATH:
@@ -356,6 +378,14 @@ Navigation tools (`step-next`, `step-into`, `step-out`, `step-continue`) accept 
 ```bash
 export DRHOOK_NETCOREDBG_PATH=/path/to/netcoredbg
 ```
+
+### netcoredbg crashes or fails to attach on Apple Silicon
+
+**Symptom:** netcoredbg installed via Homebrew or GitHub release fails to attach to a .NET process on an Apple Silicon Mac (M1/M2/M3/M4), or crashes immediately.
+
+**Cause:** Pre-built netcoredbg binaries are x86_64 only. Under Rosetta 2, an x86_64 debugger cannot attach to an ARM64 .NET process — the CoreCLR debugging libraries (dbgshim, mscordbi) must match the host architecture.
+
+**Fix:** Build netcoredbg from source for ARM64. See [section 2](#netcoredbg-platform-details) for instructions.
 
 ### Permission denied on macOS
 

@@ -126,6 +126,7 @@ step-vars        → inspect counter and surrounding state
 - Set-and-replace breakpoint semantics require awareness from the consumer — documented in tool descriptions
 - Exception filter granularity is limited to `"all"` / `"user-unhandled"` (netcoredbg constraint)
 - Additional tools increase the MCP tool surface — consumers must choose the right stepping operation
+- Apple Silicon requires building netcoredbg from source — no pre-built ARM64 binaries available (see [Getting Started](../getting-started.md#netcoredbg-platform-details))
 
 **Deferred:**
 - Multi-breakpoint registry (tracking and managing breakpoints per file)
