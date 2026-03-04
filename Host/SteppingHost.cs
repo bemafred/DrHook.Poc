@@ -17,7 +17,7 @@
 using System.Diagnostics;
 
 Console.WriteLine("╔══════════════════════════════════════════════════════╗");
-Console.WriteLine("║  DrHook.Poc — SteppingHost                          ║");
+Console.WriteLine("║  DrHook.Poc — SteppingHost                           ║");
 Console.WriteLine($"║  PID: {Environment.ProcessId,-46} ║");
 Console.WriteLine($"║  Runtime: {Environment.Version,-42} ║");
 Console.WriteLine("╚══════════════════════════════════════════════════════╝");

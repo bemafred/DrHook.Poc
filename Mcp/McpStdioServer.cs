@@ -20,9 +20,11 @@ public sealed class McpStdioServer(string name, string version)
 
     public async Task RunAsync(CancellationToken ct)
     {
-        var stdin = new StreamReader(Console.OpenStandardInput(), Encoding.UTF8);
-        var stdout = new StreamWriter(Console.OpenStandardOutput(), Encoding.UTF8) { AutoFlush = true };
-        var stderr = new StreamWriter(Console.OpenStandardError(), Encoding.UTF8) { AutoFlush = true };
+        // Use UTF-8 without BOM — BOM bytes before JSON-RPC responses corrupt the framing.
+        var utf8NoBom = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+        var stdin = new StreamReader(Console.OpenStandardInput(), utf8NoBom);
+        var stdout = new StreamWriter(Console.OpenStandardOutput(), utf8NoBom) { AutoFlush = true };
+        var stderr = new StreamWriter(Console.OpenStandardError(), utf8NoBom) { AutoFlush = true };
 
         await stderr.WriteLineAsync($"[DrHook] MCP stdio server {name} v{version} started");
         await stderr.WriteLineAsync($"[DrHook] Tools: {string.Join(", ", _tools.Keys)}");

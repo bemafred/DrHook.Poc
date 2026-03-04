@@ -123,10 +123,12 @@ The project builds with warnings-as-errors. A clean build confirms all dependenc
 Register DrHook as a **project-scoped** MCP server in Claude Code:
 
 ```bash
-claude mcp add drhook --transport stdio -- dotnet run --project /absolute/path/to/DrHook.Poc
+claude mcp add drhook --transport stdio -- dotnet <clone-dir>/bin/Debug/net10.0/DrHook.Poc.dll
 ```
 
-Replace `/absolute/path/to/DrHook.Poc` with the actual path to your clone.
+Replace `<clone-dir>` with the absolute path to your clone (e.g. `/home/you/src/DrHook.Poc`).
+
+> **Why the DLL path?** Using the built binary directly (`dotnet <path>.dll`) skips both the build step and project resolution. This is faster than `dotnet run --no-build` and avoids Claude Code's 30-second MCP connection timeout. Always run `dotnet build` first (step 3) so the DLL exists.
 
 ### Verify registration
 
@@ -134,7 +136,17 @@ Replace `/absolute/path/to/DrHook.Poc` with the actual path to your clone.
 claude mcp list
 ```
 
-You should see `drhook` listed with transport `stdio`.
+You should see `drhook` listed with a `✓ Connected` status.
+
+### After code changes
+
+Whenever you modify DrHook source code, rebuild before restarting the MCP server:
+
+```bash
+dotnet build DrHook.Poc.csproj
+```
+
+Claude Code will pick up the new build on the next MCP server restart.
 
 ### Project vs global scope
 
@@ -143,7 +155,7 @@ By default, `claude mcp add` registers the server at **project scope** (stored i
 To register globally (available in all projects):
 
 ```bash
-claude mcp add --scope global drhook --transport stdio -- dotnet run --project /absolute/path/to/DrHook.Poc
+claude mcp add --scope global drhook --transport stdio -- dotnet <clone-dir>/bin/Debug/net10.0/DrHook.Poc.dll
 ```
 
 ---
@@ -165,9 +177,9 @@ Expected output:
 
 ```
 ╔══════════════════════════════════════════════════════╗
-║  DrHook.Poc — SteppingHost                          ║
-║  PID: 12345                                         ║
-║  Runtime: 10.0.0                                    ║
+║  DrHook.Poc — SteppingHost                           ║
+║  PID: 12345                                          ║
+║  Runtime: 10.0.0                                     ║
 ╚══════════════════════════════════════════════════════╝
 
 Attach DrHook now. Press Enter to begin scenarios.
@@ -368,6 +380,20 @@ Navigation tools (`step-next`, `step-into`, `step-out`, `step-continue`) accept 
 ---
 
 ## 10. Troubleshooting
+
+### MCP server "drhook" connection timed out
+
+**Symptom:** Claude Code logs `MCP server "drhook" connection timed out after 30000ms`
+
+**Cause:** The MCP registration command uses `dotnet run` without `--no-build`, so a build is triggered on every server start. The build time exceeds Claude Code's 30-second MCP connection timeout.
+
+**Fix:** Re-register with `--no-build` and build separately:
+
+```bash
+dotnet build DrHook.Poc.csproj
+claude mcp remove drhook
+claude mcp add drhook --transport stdio -- dotnet <clone-dir>/bin/Debug/net10.0/DrHook.Poc.dll
+```
 
 ### netcoredbg not found
 

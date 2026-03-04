@@ -74,11 +74,14 @@ Every observation tool requires a **hypothesis** — state what you expect befor
 - [netcoredbg](https://github.com/Samsung/netcoredbg) installed and on PATH (for stepping layer)
   - **Apple Silicon (M1/M2/M3/M4):** must be [built from source](docs/getting-started.md#netcoredbg-platform-details) — no pre-built ARM64 binaries are published
 
-### 1. Add to Claude Code
+### 1. Build and register as MCP server
 
 ```bash
-claude mcp add drhook --transport stdio -- dotnet run --project DrHook.Poc
+dotnet build DrHook.Poc.csproj
+claude mcp add drhook --transport stdio -- dotnet <clone-dir>/bin/Debug/net10.0/DrHook.Poc.dll
 ```
+
+Replace `<clone-dir>` with the absolute path to your clone. Using the DLL directly skips build and project resolution, avoiding Claude Code's 30-second MCP connection timeout. Rebuild with `dotnet build` after code changes.
 
 ### 2. Start the stepping host
 

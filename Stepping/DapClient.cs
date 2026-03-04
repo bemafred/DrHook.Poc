@@ -21,6 +21,7 @@ public sealed class DapClient : IAsyncDisposable
     private StreamReader? _stdout;
     private StreamWriter? _stdin;
     private int _seq = 1;
+    private readonly System.Collections.Concurrent.ConcurrentQueue<JsonObject> _stoppedEvents = new();
 
     public bool IsConnected => _debugger is not null && !_debugger.HasExited;
 
@@ -62,6 +63,11 @@ public sealed class DapClient : IAsyncDisposable
         {
             ["processId"] = pid,
         }, ct);
+    }
+
+    public async Task ConfigurationDoneAsync(CancellationToken ct)
+    {
+        await SendRequestAsync("configurationDone", new JsonObject(), ct);
     }
 
     public async Task<JsonObject> SetBreakpointAsync(string sourceFile, int line, CancellationToken ct)
@@ -217,6 +223,28 @@ public sealed class DapClient : IAsyncDisposable
         _debugger?.Dispose();
     }
 
+    /// <summary>
+    /// Reads DAP messages until a "stopped" event arrives.
+    /// The cancellation token is the sole timeout mechanism — the caller decides how long to wait.
+    /// </summary>
+    public async Task<JsonObject> WaitForStoppedAsync(CancellationToken ct)
+    {
+        if (_stoppedEvents.TryDequeue(out var buffered))
+            return buffered;
+
+        while (!ct.IsCancellationRequested)
+        {
+            var message = await ReadDapMessageAsync(ct);
+            if (message is null) throw new InvalidOperationException("DAP connection closed while waiting for stopped event");
+
+            var type = message["type"]?.GetValue<string>();
+            if (type == "event" && message["event"]?.GetValue<string>() == "stopped")
+                return message["body"] as JsonObject ?? new JsonObject();
+        }
+
+        throw new OperationCanceledException();
+    }
+
     // ─── DAP wire protocol ──────────────────────────────────────────────
 
     private async Task<JsonObject> SendRequestAsync(string command, JsonObject arguments, CancellationToken ct)
@@ -260,8 +288,14 @@ public sealed class DapClient : IAsyncDisposable
                 return message["body"] as JsonObject ?? new JsonObject();
             }
 
-            // Events like "stopped", "output" — could be captured for richer signal
-            // For POC, skip and continue waiting for response
+            // Buffer stopped events so WaitForStoppedAsync can consume them
+            if (type == "event" && message["event"]?.GetValue<string>() == "stopped")
+            {
+                _stoppedEvents.Enqueue(message["body"] as JsonObject ?? new JsonObject());
+                continue;
+            }
+
+            // Other events (output, etc.) — skip
         }
 
         throw new OperationCanceledException();

@@ -12,8 +12,8 @@ DrHook.Poc is an MCP stdio server that provides passive runtime observation (Eve
 # Build (warnings are errors — no separate lint step)
 dotnet build DrHook.Poc.csproj
 
-# Register as MCP server in Claude Code
-claude mcp add drhook --transport stdio -- dotnet run --project DrHook.Poc
+# Register as MCP server in Claude Code (DLL path avoids 30s timeout)
+claude mcp add drhook --transport stdio -- dotnet <clone-dir>/bin/Debug/net10.0/DrHook.Poc.dll
 
 # Run directly (speaks JSON-RPC 2.0 on stdin/stdout, logs to stderr)
 dotnet run --project DrHook.Poc

@@ -50,17 +50,18 @@ public sealed class SteppingSessionManager
             await _client.LaunchAsync(netcoredbgPath, ct);
             await _client.AttachAsync(pid, ct);
             await _client.SetBreakpointAsync(sourceFile, line, ct);
+            await _client.ConfigurationDoneAsync(ct);
 
             // Get threads to find the main thread
             var threads = await _client.GetThreadsAsync(ct);
             var threadArray = threads["threads"] as JsonArray;
             _activeThreadId = threadArray?[0]?["id"]?.GetValue<int>() ?? 1;
 
-            // Continue execution until breakpoint hit
+            // Continue execution — process runs until breakpoint is hit.
+            // WaitForStoppedAsync blocks until DAP sends a "stopped" event;
+            // the cancellation token is the only timeout.
             await _client.ContinueAsync(_activeThreadId, ct);
-
-            // Small delay for breakpoint to hit
-            await Task.Delay(500, ct);
+            await _client.WaitForStoppedAsync(ct);
 
             // Get current state
             var state = await GetCurrentStateAsync(ct);
@@ -92,9 +93,7 @@ public sealed class SteppingSessionManager
         {
             _stepCount++;
             await _client.StepNextAsync(_activeThreadId, ct);
-
-            // Small delay for step to complete
-            await Task.Delay(200, ct);
+            await _client.WaitForStoppedAsync(ct);
 
             var state = await GetCurrentStateAsync(ct);
 
@@ -130,8 +129,7 @@ public sealed class SteppingSessionManager
         {
             _stepCount++;
             await _client.StepInAsync(_activeThreadId, ct);
-
-            await Task.Delay(200, ct);
+            await _client.WaitForStoppedAsync(ct);
 
             var state = await GetCurrentStateAsync(ct);
 
@@ -167,8 +165,7 @@ public sealed class SteppingSessionManager
         {
             _stepCount++;
             await _client.StepOutAsync(_activeThreadId, ct);
-
-            await Task.Delay(500, ct);
+            await _client.WaitForStoppedAsync(ct);
 
             var state = await GetCurrentStateAsync(ct);
 
@@ -235,8 +232,7 @@ public sealed class SteppingSessionManager
         try
         {
             await _client.PauseAsync(_activeThreadId, ct);
-
-            await Task.Delay(300, ct);
+            await _client.WaitForStoppedAsync(ct);
 
             var state = await GetCurrentStateAsync(ct);
 
