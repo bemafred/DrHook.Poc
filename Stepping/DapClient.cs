@@ -95,6 +95,66 @@ public sealed class DapClient : IAsyncDisposable
         }, ct);
     }
 
+    public async Task<JsonObject> StepInAsync(int threadId, CancellationToken ct)
+    {
+        return await SendRequestAsync("stepIn", new JsonObject
+        {
+            ["threadId"] = threadId
+        }, ct);
+    }
+
+    public async Task<JsonObject> StepOutAsync(int threadId, CancellationToken ct)
+    {
+        return await SendRequestAsync("stepOut", new JsonObject
+        {
+            ["threadId"] = threadId
+        }, ct);
+    }
+
+    public async Task<JsonObject> PauseAsync(int threadId, CancellationToken ct)
+    {
+        return await SendRequestAsync("pause", new JsonObject
+        {
+            ["threadId"] = threadId
+        }, ct);
+    }
+
+    public async Task<JsonObject> SetBreakpointAsync(string sourceFile, int line, string? condition, CancellationToken ct)
+    {
+        var breakpointObj = new JsonObject { ["line"] = line };
+        if (condition is not null)
+            breakpointObj["condition"] = condition;
+
+        return await SendRequestAsync("setBreakpoints", new JsonObject
+        {
+            ["source"] = new JsonObject
+            {
+                ["path"] = sourceFile
+            },
+            ["breakpoints"] = new JsonArray(breakpointObj)
+        }, ct);
+    }
+
+    public async Task<JsonObject> SetFunctionBreakpointsAsync(string functionName, string? condition, CancellationToken ct)
+    {
+        var breakpointObj = new JsonObject { ["name"] = functionName };
+        if (condition is not null)
+            breakpointObj["condition"] = condition;
+
+        return await SendRequestAsync("setFunctionBreakpoints", new JsonObject
+        {
+            ["breakpoints"] = new JsonArray(breakpointObj)
+        }, ct);
+    }
+
+    public async Task<JsonObject> SetExceptionBreakpointsAsync(string[] filters, CancellationToken ct)
+    {
+        return await SendRequestAsync("setExceptionBreakpoints", new JsonObject
+        {
+            ["filters"] = new JsonArray(filters.Select(f => (JsonNode)JsonValue.Create(f)!).ToArray())
+        }, ct);
+    }
+
     public async Task<JsonObject> GetThreadsAsync(CancellationToken ct)
     {
         return await SendRequestAsync("threads", new JsonObject(), ct);

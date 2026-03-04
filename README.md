@@ -49,15 +49,24 @@ Uses netcoredbg (Samsung, MIT license) speaking the Debug Adapter Protocol. Clau
 | `drhook:processes` | — | List running .NET processes |
 | `drhook:snapshot` | Observation | Summarized EventPipe capture with anomaly detection |
 | `drhook:step-launch` | Stepping | Attach to process, set breakpoint, halt at it |
-| `drhook:step-next` | Stepping | Step one line, return current state |
-| `drhook:step-vars` | Stepping | Inspect local variables |
-| `drhook:step-stop` | Stepping | End session, prompt for reflection |
+| `drhook:step-next` | Stepping | Step over one line, return current state |
+| `drhook:step-into` | Stepping | Step into method call on current line |
+| `drhook:step-out` | Stepping | Step out to caller frame |
+| `drhook:step-continue` | Stepping | Resume execution until next breakpoint |
+| `drhook:step-pause` | Stepping | Interrupt running process immediately |
+| `drhook:step-breakpoint` | Stepping | Set source line breakpoint (optional condition) |
+| `drhook:step-break-function` | Stepping | Set function entry breakpoint (optional condition) |
+| `drhook:step-break-exception` | Stepping | Set exception filter breakpoint (`all` / `user-unhandled`) |
+| `drhook:step-vars` | Stepping | Inspect local variables at current position |
+| `drhook:step-stop` | Stepping | End session, detach from process |
 
 Every observation tool requires a **hypothesis** — state what you expect before inspecting. The delta between expectation and reality is the epistemic value.
 
 ---
 
 ## Quick Start
+
+> See the **[Getting Started Tutorial](docs/getting-started.md)** for detailed platform-specific installation, end-to-end walkthrough, and all 13 tools.
 
 ### Prerequisites
 
@@ -138,7 +147,7 @@ Epistemic coverage: was the execution **understood**?
 
 ```
 DrHook.Poc/
-  Program.cs                        — MCP stdio entry, 6 tools registered
+  Program.cs                        — MCP stdio entry, 13 tools registered
   Mcp/
     McpStdioServer.cs               — JSON-RPC 2.0 over stdio (BCL only)
   Diagnostics/
@@ -151,8 +160,10 @@ DrHook.Poc/
   Host/
     SteppingHost.cs                 — CLI inspection target (3 scenarios)
   docs/
+    getting-started.md              — Full tutorial: install, build, run, register
     adrs/
       ADR-001-drhook-poc-hypothesis.md
+      ADR-002-complete-dap-stepping-operations.md
     observations/                   — Empirical results as they accumulate
 ```
 

@@ -151,4 +151,10 @@ public sealed class ToolArgs(JsonObject args)
 
     public string? GetStringOrDefault(string key, string? defaultValue) =>
         args[key]?.GetValue<string>() ?? defaultValue;
+
+    public bool GetBool(string key) =>
+        args[key]?.GetValue<bool>() ?? throw new ArgumentException($"Missing required argument: {key}");
+
+    public bool GetBoolOrDefault(string key, bool defaultValue) =>
+        args[key]?.GetValue<bool>() ?? defaultValue;
 }

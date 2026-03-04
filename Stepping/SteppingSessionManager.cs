@@ -73,7 +73,7 @@ public sealed class SteppingSessionManager
                 ["breakpoint"] = new JsonObject { ["file"] = sourceFile, ["line"] = line },
                 ["hypothesis"] = hypothesis,
                 ["currentState"] = state,
-                ["instruction"] = "Use drhook:step-next to advance one line. Use drhook:step-vars for variable details."
+                ["instruction"] = "Use drhook:step-next (over), drhook:step-into (in), drhook:step-out (out) to navigate. Use drhook:step-continue to run to next breakpoint. Use drhook:step-vars for variable details."
             }, new JsonSerializerOptions { WriteIndented = true });
         }
         catch (Exception ex)
@@ -100,6 +100,7 @@ public sealed class SteppingSessionManager
 
             var result = new JsonObject
             {
+                ["operation"] = "next",
                 ["step"] = _stepCount,
                 ["assemblyVersion"] = _targetVersion,
                 ["currentState"] = state,
@@ -109,14 +110,241 @@ public sealed class SteppingSessionManager
                 result["hypothesis"] = hypothesis;
 
             result["prompt"] = hypothesis is not null
-                ? $"Step {_stepCount} complete. Compare state with hypothesis: \"{hypothesis}\""
-                : $"Step {_stepCount} complete. Describe what you observe and whether it matches expectations.";
+                ? $"Step {_stepCount} complete (next). Compare state with hypothesis: \"{hypothesis}\""
+                : $"Step {_stepCount} complete (next). Describe what you observe and whether it matches expectations.";
 
             return JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true });
         }
         catch (Exception ex)
         {
             return Error($"Step failed: {ex.Message}");
+        }
+    }
+
+    public async Task<string> StepIntoAsync(string? hypothesis, CancellationToken ct)
+    {
+        if (!IsActive || _client is null)
+            return Error("No active stepping session. Use drhook:step-launch first.");
+
+        try
+        {
+            _stepCount++;
+            await _client.StepInAsync(_activeThreadId, ct);
+
+            await Task.Delay(200, ct);
+
+            var state = await GetCurrentStateAsync(ct);
+
+            var result = new JsonObject
+            {
+                ["operation"] = "stepIn",
+                ["step"] = _stepCount,
+                ["assemblyVersion"] = _targetVersion,
+                ["currentState"] = state,
+            };
+
+            if (hypothesis is not null)
+                result["hypothesis"] = hypothesis;
+
+            result["prompt"] = hypothesis is not null
+                ? $"Step {_stepCount} complete (into). Compare state with hypothesis: \"{hypothesis}\""
+                : $"Step {_stepCount} complete (into). Describe what you observe — did stepping into the call reveal the expected code path?";
+
+            return JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true });
+        }
+        catch (Exception ex)
+        {
+            return Error($"Step-into failed: {ex.Message}");
+        }
+    }
+
+    public async Task<string> StepOutAsync(string? hypothesis, CancellationToken ct)
+    {
+        if (!IsActive || _client is null)
+            return Error("No active stepping session. Use drhook:step-launch first.");
+
+        try
+        {
+            _stepCount++;
+            await _client.StepOutAsync(_activeThreadId, ct);
+
+            await Task.Delay(500, ct);
+
+            var state = await GetCurrentStateAsync(ct);
+
+            var result = new JsonObject
+            {
+                ["operation"] = "stepOut",
+                ["step"] = _stepCount,
+                ["assemblyVersion"] = _targetVersion,
+                ["currentState"] = state,
+            };
+
+            if (hypothesis is not null)
+                result["hypothesis"] = hypothesis;
+
+            result["prompt"] = hypothesis is not null
+                ? $"Step {_stepCount} complete (out). Compare state with hypothesis: \"{hypothesis}\""
+                : $"Step {_stepCount} complete (out). Describe the return — did execution return to the expected caller frame?";
+
+            return JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true });
+        }
+        catch (Exception ex)
+        {
+            return Error($"Step-out failed: {ex.Message}");
+        }
+    }
+
+    public async Task<string> ContinueAsync(string? hypothesis, CancellationToken ct)
+    {
+        if (!IsActive || _client is null)
+            return Error("No active stepping session. Use drhook:step-launch first.");
+
+        try
+        {
+            await _client.ContinueAsync(_activeThreadId, ct);
+
+            var result = new JsonObject
+            {
+                ["operation"] = "continue",
+                ["step"] = _stepCount,
+                ["assemblyVersion"] = _targetVersion,
+                ["status"] = "running",
+            };
+
+            if (hypothesis is not null)
+                result["hypothesis"] = hypothesis;
+
+            result["prompt"] = hypothesis is not null
+                ? $"Process resumed. Expecting to hit breakpoint matching hypothesis: \"{hypothesis}\". Use drhook:step-pause to interrupt."
+                : "Process resumed. It will halt at the next breakpoint. Use drhook:step-pause to interrupt.";
+
+            return JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true });
+        }
+        catch (Exception ex)
+        {
+            return Error($"Continue failed: {ex.Message}");
+        }
+    }
+
+    public async Task<string> PauseAsync(CancellationToken ct)
+    {
+        if (!IsActive || _client is null)
+            return Error("No active stepping session. Use drhook:step-launch first.");
+
+        try
+        {
+            await _client.PauseAsync(_activeThreadId, ct);
+
+            await Task.Delay(300, ct);
+
+            var state = await GetCurrentStateAsync(ct);
+
+            var result = new JsonObject
+            {
+                ["operation"] = "pause",
+                ["step"] = _stepCount,
+                ["assemblyVersion"] = _targetVersion,
+                ["currentState"] = state,
+            };
+
+            result["prompt"] = "Process paused. Inspect current location and variables to understand where execution was interrupted.";
+
+            return JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true });
+        }
+        catch (Exception ex)
+        {
+            return Error($"Pause failed: {ex.Message}");
+        }
+    }
+
+    public async Task<string> SetBreakpointAsync(string sourceFile, int line, string? condition, CancellationToken ct)
+    {
+        if (!IsActive || _client is null)
+            return Error("No active stepping session. Use drhook:step-launch first.");
+
+        try
+        {
+            var response = await _client.SetBreakpointAsync(sourceFile, line, condition, ct);
+            var breakpoints = response["breakpoints"] as JsonArray;
+            var verified = breakpoints?[0]?["verified"]?.GetValue<bool>() ?? false;
+
+            var result = new JsonObject
+            {
+                ["operation"] = "setBreakpoint",
+                ["sourceFile"] = sourceFile,
+                ["line"] = line,
+                ["verified"] = verified,
+                ["assemblyVersion"] = _targetVersion,
+            };
+
+            if (condition is not null)
+                result["condition"] = condition;
+
+            result["note"] = "DAP uses set-and-replace semantics: this replaces ALL breakpoints in this file. Multi-breakpoint-per-file registry is deferred.";
+
+            return JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true });
+        }
+        catch (Exception ex)
+        {
+            return Error($"Set breakpoint failed: {ex.Message}");
+        }
+    }
+
+    public async Task<string> SetFunctionBreakpointAsync(string functionName, string? condition, CancellationToken ct)
+    {
+        if (!IsActive || _client is null)
+            return Error("No active stepping session. Use drhook:step-launch first.");
+
+        try
+        {
+            var response = await _client.SetFunctionBreakpointsAsync(functionName, condition, ct);
+            var breakpoints = response["breakpoints"] as JsonArray;
+            var verified = breakpoints?[0]?["verified"]?.GetValue<bool>() ?? false;
+
+            var result = new JsonObject
+            {
+                ["operation"] = "setFunctionBreakpoint",
+                ["functionName"] = functionName,
+                ["verified"] = verified,
+                ["assemblyVersion"] = _targetVersion,
+            };
+
+            if (condition is not null)
+                result["condition"] = condition;
+
+            result["note"] = "DAP uses set-and-replace semantics: this replaces ALL function breakpoints. Multi-breakpoint registry is deferred.";
+
+            return JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true });
+        }
+        catch (Exception ex)
+        {
+            return Error($"Set function breakpoint failed: {ex.Message}");
+        }
+    }
+
+    public async Task<string> SetExceptionBreakpointAsync(string filter, CancellationToken ct)
+    {
+        if (!IsActive || _client is null)
+            return Error("No active stepping session. Use drhook:step-launch first.");
+
+        try
+        {
+            await _client.SetExceptionBreakpointsAsync([filter], ct);
+
+            var result = new JsonObject
+            {
+                ["operation"] = "setExceptionBreakpoint",
+                ["filter"] = filter,
+                ["assemblyVersion"] = _targetVersion,
+                ["note"] = "Exception breakpoints use DAP filters ('all' or 'user-unhandled'), not exception type names. Type-specific exceptions require DrHook.Engine.",
+            };
+
+            return JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true });
+        }
+        catch (Exception ex)
+        {
+            return Error($"Set exception breakpoint failed: {ex.Message}");
         }
     }
 

@@ -17,7 +17,7 @@ using DrHook.Poc.Stepping;
 //   3. Hypothesis field — consumer states expectations before inspecting
 //   4. Falsification criteria — tracked in ADR-001
 
-var server = new McpStdioServer("drhook", "0.2.0");
+var server = new McpStdioServer("drhook", "0.3.0");
 var steppingSession = new SteppingSessionManager();
 
 // ─── Observation layer (EventPipe) ──────────────────────────────────────────
@@ -151,6 +151,171 @@ server.RegisterTool(
     handler: async (args, ct) =>
     {
         return await steppingSession.StopAsync(ct);
+    });
+
+server.RegisterTool(
+    name: "drhook:step-into",
+    description: """
+        Step INTO the method call on the current line. Descends into the callee.
+        Use this to follow execution into a method — e.g. entering a recursive call
+        or library method to see what happens inside. Contrast with drhook:step-next
+        which steps OVER calls.
+        """,
+    inputSchema: """
+    {
+      "type": "object",
+      "properties": {
+        "hypothesis": { "type": "string", "description": "What you expect inside the method (optional but valuable)" }
+      },
+      "required": []
+    }
+    """,
+    handler: async (args, ct) =>
+    {
+        var hypothesis = args.GetStringOrDefault("hypothesis", null);
+        return await steppingSession.StepIntoAsync(hypothesis, ct);
+    });
+
+server.RegisterTool(
+    name: "drhook:step-out",
+    description: """
+        Step OUT of the current method, returning to the caller frame.
+        Use this to escape deep call stacks — e.g. after stepping into a recursive
+        call, step-out returns to the frame that made the call.
+        """,
+    inputSchema: """
+    {
+      "type": "object",
+      "properties": {
+        "hypothesis": { "type": "string", "description": "What you expect at the return site (optional but valuable)" }
+      },
+      "required": []
+    }
+    """,
+    handler: async (args, ct) =>
+    {
+        var hypothesis = args.GetStringOrDefault("hypothesis", null);
+        return await steppingSession.StepOutAsync(hypothesis, ct);
+    });
+
+server.RegisterTool(
+    name: "drhook:step-continue",
+    description: """
+        Resume execution until the next breakpoint is hit. The process runs freely.
+        Use after setting a breakpoint with drhook:step-breakpoint or drhook:step-break-function.
+        Use drhook:step-pause to interrupt if no breakpoint is hit.
+        """,
+    inputSchema: """
+    {
+      "type": "object",
+      "properties": {
+        "hypothesis": { "type": "string", "description": "What you expect at the next breakpoint (optional but valuable)" }
+      },
+      "required": []
+    }
+    """,
+    handler: async (args, ct) =>
+    {
+        var hypothesis = args.GetStringOrDefault("hypothesis", null);
+        return await steppingSession.ContinueAsync(hypothesis, ct);
+    });
+
+server.RegisterTool(
+    name: "drhook:step-pause",
+    description: """
+        Pause a running process immediately. Use after drhook:step-continue when
+        you need to interrupt execution — e.g. to inspect a tight loop or when
+        no breakpoint was hit. Returns the current source location.
+        """,
+    inputSchema: """
+    {
+      "type": "object",
+      "properties": {}
+    }
+    """,
+    handler: async (args, ct) =>
+    {
+        return await steppingSession.PauseAsync(ct);
+    });
+
+server.RegisterTool(
+    name: "drhook:step-breakpoint",
+    description: """
+        Set a source breakpoint at a specific file and line. Optionally conditional.
+        WARNING: DAP uses set-and-replace semantics — this replaces ALL breakpoints
+        in the specified file. Multi-breakpoint-per-file registry is deferred.
+        Use drhook:step-continue to run to the breakpoint.
+        """,
+    inputSchema: """
+    {
+      "type": "object",
+      "properties": {
+        "sourceFile": { "type": "string", "description": "Absolute path to the source file" },
+        "line": { "type": "integer", "description": "Line number for the breakpoint" },
+        "condition": { "type": "string", "description": "Optional condition expression (e.g. 'counter > 1000')" }
+      },
+      "required": ["sourceFile", "line"]
+    }
+    """,
+    handler: async (args, ct) =>
+    {
+        var sourceFile = args.GetString("sourceFile");
+        var line = args.GetInt("line");
+        var condition = args.GetStringOrDefault("condition", null);
+        return await steppingSession.SetBreakpointAsync(sourceFile, line, condition, ct);
+    });
+
+server.RegisterTool(
+    name: "drhook:step-break-function",
+    description: """
+        Set a function breakpoint by method name. Stops at method entry.
+        Optionally conditional. WARNING: DAP uses set-and-replace semantics —
+        this replaces ALL function breakpoints.
+        Use drhook:step-continue to run to the breakpoint.
+        """,
+    inputSchema: """
+    {
+      "type": "object",
+      "properties": {
+        "functionName": { "type": "string", "description": "Fully qualified or simple method name (e.g. 'Fibonacci' or 'MyNamespace.MyClass.Fibonacci')" },
+        "condition": { "type": "string", "description": "Optional condition expression" }
+      },
+      "required": ["functionName"]
+    }
+    """,
+    handler: async (args, ct) =>
+    {
+        var functionName = args.GetString("functionName");
+        var condition = args.GetStringOrDefault("condition", null);
+        return await steppingSession.SetFunctionBreakpointAsync(functionName, condition, ct);
+    });
+
+server.RegisterTool(
+    name: "drhook:step-break-exception",
+    description: """
+        Set an exception breakpoint using DAP exception filters.
+        Stops execution when an exception matching the filter is thrown.
+        Filters are constrained by netcoredbg: 'all' (every thrown exception)
+        or 'user-unhandled' (exceptions not caught in user code).
+        Type-specific exception breakpoints require DrHook.Engine (deferred).
+        """,
+    inputSchema: """
+    {
+      "type": "object",
+      "properties": {
+        "filter": {
+          "type": "string",
+          "enum": ["all", "user-unhandled"],
+          "description": "Exception filter: 'all' breaks on every throw, 'user-unhandled' breaks only on exceptions not caught in user code"
+        }
+      },
+      "required": ["filter"]
+    }
+    """,
+    handler: async (args, ct) =>
+    {
+        var filter = args.GetString("filter");
+        return await steppingSession.SetExceptionBreakpointAsync(filter, ct);
     });
 
 await server.RunAsync(CancellationToken.None);
