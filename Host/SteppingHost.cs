@@ -15,7 +15,7 @@
 using System.Diagnostics;
 
 Console.WriteLine("╔══════════════════════════════════════════════════════╗");
-Console.WriteLine("║  DrHook.Poc — SteppingHost                          ║");
+Console.WriteLine("║  DrHook.Poc — SteppingHost                           ║");
 Console.WriteLine($"║  PID: {Environment.ProcessId,-46} ║");
 Console.WriteLine($"║  Runtime: {Environment.Version,-42} ║");
 Console.WriteLine("╚══════════════════════════════════════════════════════╝");
@@ -24,13 +24,13 @@ Console.WriteLine();
 while (true)
 {
     Console.WriteLine("╔══════════════════════════════════════════════════════╗");
-    Console.WriteLine("║  Select a scenario:                                 ║");
-    Console.WriteLine("║  [1] Tight loop (2s CPU spin)                       ║");
-    Console.WriteLine("║  [2] Recursive Fibonacci(8)                         ║");
-    Console.WriteLine("║  [3] Caught exception                               ║");
-    Console.WriteLine("║  [4] Mutable state (build a list)                   ║");
-    Console.WriteLine("║  [5] Async with state mutation                      ║");
-    Console.WriteLine("║  [q] Quit                                           ║");
+    Console.WriteLine("║  Select a scenario:                                  ║");
+    Console.WriteLine("║  [1] Tight loop (2s CPU spin)                        ║");
+    Console.WriteLine("║  [2] Recursive Fibonacci(8)                          ║");
+    Console.WriteLine("║  [3] Caught exception                                ║");
+    Console.WriteLine("║  [4] Mutable state (build a list)                    ║");
+    Console.WriteLine("║  [5] Async with state mutation                       ║");
+    Console.WriteLine("║  [q] Quit                                            ║");
     Console.WriteLine("╚══════════════════════════════════════════════════════╝");
     Console.Write("> ");
 
@@ -126,8 +126,6 @@ static void RunMutableState()
         Console.WriteLine($"  {p.Name}, age {p.Age}");
 }
 
-record Person(string Name, int Age);
-
 // ── Scenario 5: Async with state mutation ───────────────────────────────
 // BREAKPOINT TARGET: inside SlowCountAsync.
 // Test: stepping across await points — verifying DAP handles async state machines.
@@ -148,3 +146,5 @@ static async Task<int> SlowCountAsync(int steps)
     }
     return counter;
 }
+
+record Person(string Name, int Age);
