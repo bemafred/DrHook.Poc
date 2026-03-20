@@ -34,7 +34,8 @@ while (true)
     Console.WriteLine("╚══════════════════════════════════════════════════════╝");
     Console.Write("> ");
 
-    var choice = Console.ReadLine()?.Trim();
+    var choice = Console.ReadKey().KeyChar.ToString();
+    Console.WriteLine();
 
     switch (choice)
     {
