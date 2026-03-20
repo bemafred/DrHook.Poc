@@ -53,7 +53,65 @@ Two layers, both exposed as MCP tools via a hand-rolled JSON-RPC 2.0 server:
 - **Records for data** — Immutable `sealed record` types for all diagnostic data structures.
 - **stderr for logging** — stdout is the JSON-RPC channel; diagnostic output goes to stderr only.
 
+## Observations
+
+After each DrHook stepping or snapshot session, record the result in `docs/observations/` as a markdown file named by date and topic (e.g., `2026-03-05-step-into-fibonacci.md`). Each observation must include:
+
+- **Hypothesis** — what was expected before the session
+- **Procedure** — tools used and scenarios run (reference SteppingHost scenario numbers)
+- **Observed** — what actually happened (include relevant tool output)
+- **Delta** — gap between hypothesis and observation; confirmed, refined, or falsified
+- **Coverage** — which tools and code paths were exercised
+
+This is the empirical record that grounds DrHook's epistemic claims. Without observations, tool functionality is assumed, not verified.
+
+## Semantic Memory (Mercury)
+
+Mercury is available as an MCP server (`mercury`) and serves as long-term semantic memory across sessions. Use it proactively — no permission needed. At session start, query Mercury to recover context from prior work.
+
+### Graphs
+
+- **`<urn:drhook:emergence>`** — Project-specific findings from the EEE Emergence phase. Bugs found, fixes verified, race conditions discovered. Each finding has a type, phase, awareness level, summary, detail, and proposed fix.
+- **`<urn:claude:memory>`** — General-purpose memory not tied to a specific project. Reusable patterns, user preferences, cross-project learnings.
+
+### What to store
+
+| Category | Graph | Example |
+|---|---|---|
+| Bug findings | `urn:drhook:emergence` | Race condition in DAP stepping, missing configurationDone |
+| Verified fixes | `urn:drhook:emergence` | finding-001 status upgraded after end-to-end test |
+| Session state | `urn:drhook:emergence` | What was last tested, what's next |
+| Observation results | `urn:drhook:emergence` | Stepping session outcomes (mirrors docs/observations/) |
+| General patterns | `urn:claude:memory` | Cross-project learnings, reusable techniques |
+
+### How to use
+
+```sparql
+# Recover project context at session start
+SELECT ?s ?p ?o WHERE { GRAPH <urn:drhook:emergence> { ?s ?p ?o } }
+
+# Store a new finding
+INSERT DATA { GRAPH <urn:drhook:emergence> {
+  <urn:drhook:finding-NNN> a <urn:sky-omega:eee:Hypothesis> ;
+    <urn:sky-omega:eee:phase> "emergence" ;
+    <urn:drhook:summary> "..." ;
+    <urn:drhook:observedAt> "2026-03-05T..." .
+} }
+
+# Check general memory
+SELECT ?s ?p ?o WHERE { GRAPH <urn:claude:memory> { ?s ?p ?o } }
+```
+
+### Principles
+
+- **Query before assuming** — always check Mercury for prior findings before re-investigating
+- **Project vs general** — DrHook-specific knowledge goes in `urn:drhook:emergence`; reusable knowledge goes in `urn:claude:memory`
+- **Update, don't duplicate** — if a finding evolves (e.g., fix verified), update the existing triple rather than creating a new one
+- **Grounding labels** — use `urn:sky-omega:eee:awareness` values: `unknown-unknown`, `known-unknown`, `unknown-known`, `known-known`
+- **Timestamps** — every finding gets `urn:drhook:observedAt` with an ISO 8601 datetime
+
 ## Reference
 
 - [ADR-001](docs/adrs/ADR-001-drhook-poc-hypothesis.md) — Full architecture decision, falsification criteria, sovereign port path
 - [ADR-002](docs/adrs/ADR-002-complete-dap-stepping-operations.md) — Complete DAP stepping operations (step-into, step-out, continue, pause, breakpoints, exception breakpoints)
+- [Observations](docs/observations/) — Empirical results from stepping and snapshot sessions

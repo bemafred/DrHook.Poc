@@ -1,70 +1,150 @@
 // DrHook.Poc — SteppingHost
 //
-// A minimal CLI host designed as an inspection target for DrHook.
+// A menu-driven CLI host designed as an inspection target for DrHook.
 // Run this, note the PID, then use DrHook to observe and step through it.
 //
-// Three scenarios exercising the primary bug categories:
-//   1. Tight computation loop — the infinite loop analogue, bounded
-//   2. Recursive call stack — stack depth inspection
-//   3. Caught exception — exception event observation
+// Five scenarios exercising the primary bug categories:
+//   1. Tight computation loop — step-pause target
+//   2. Recursive Fibonacci(8) — step-into / step-out / step-break-function
+//   3. Caught exception — step-break-exception
+//   4. Mutable state — step-vars with object depth
+//   5. Async with state mutation — stepping across await points
 //
-// For controlled stepping (DAP layer):
-//   Set a breakpoint on any line below using drhook:step-launch.
-//   Step through with drhook:step-next, inspecting state at each line.
-//   This is epistemic coverage in practice: confirming your generative model
-//   of what code does matches execution reality.
+// Menu loop allows repeated runs without restarting the host.
 
 using System.Diagnostics;
 
 Console.WriteLine("╔══════════════════════════════════════════════════════╗");
-Console.WriteLine("║  DrHook.Poc — SteppingHost                           ║");
+Console.WriteLine("║  DrHook.Poc — SteppingHost                          ║");
 Console.WriteLine($"║  PID: {Environment.ProcessId,-46} ║");
 Console.WriteLine($"║  Runtime: {Environment.Version,-42} ║");
 Console.WriteLine("╚══════════════════════════════════════════════════════╝");
 Console.WriteLine();
-Console.WriteLine("Attach DrHook now. Press Enter to begin scenarios.");
-Console.ReadLine();
+
+while (true)
+{
+    Console.WriteLine("╔══════════════════════════════════════════════════════╗");
+    Console.WriteLine("║  Select a scenario:                                 ║");
+    Console.WriteLine("║  [1] Tight loop (2s CPU spin)                       ║");
+    Console.WriteLine("║  [2] Recursive Fibonacci(8)                         ║");
+    Console.WriteLine("║  [3] Caught exception                               ║");
+    Console.WriteLine("║  [4] Mutable state (build a list)                   ║");
+    Console.WriteLine("║  [5] Async with state mutation                      ║");
+    Console.WriteLine("║  [q] Quit                                           ║");
+    Console.WriteLine("╚══════════════════════════════════════════════════════╝");
+    Console.Write("> ");
+
+    var choice = Console.ReadLine()?.Trim();
+
+    switch (choice)
+    {
+        case "1":
+            RunTightLoop();
+            break;
+        case "2":
+            RunFibonacci();
+            break;
+        case "3":
+            RunException();
+            break;
+        case "4":
+            RunMutableState();
+            break;
+        case "5":
+            await RunAsyncWithMutationAsync();
+            break;
+        case "q":
+        case "Q":
+            Console.WriteLine("[SteppingHost] Exiting.");
+            return;
+        default:
+            Console.WriteLine("Invalid choice. Try again.");
+            continue;
+    }
+
+    Console.WriteLine();
+}
 
 // ── Scenario 1: Tight loop ──────────────────────────────────────────────
-// BREAKPOINT TARGET: line below. Hypothesis: "counter increments rapidly,
-// thread consumes >80% of samples in a 2s EventPipe window."
-Console.WriteLine("[Scenario 1] Tight loop — 2 second CPU spin");
-var sw = Stopwatch.StartNew();                // ← breakpoint here for stepping
-long counter = 0;
-while (sw.Elapsed.TotalSeconds < 2)
+// BREAKPOINT TARGET: line inside while loop.
+// Test: step-launch → step-continue → select scenario 1 → step-pause mid-loop.
+static void RunTightLoop()
 {
-    counter++;
-}
-Console.WriteLine($"[Scenario 1] Complete. Iterations: {counter:N0}");
-Console.WriteLine();
-
-// ── Scenario 2: Deep recursion ──────────────────────────────────────────
-// BREAKPOINT TARGET: Fibonacci method. Hypothesis: "call stack depth reaches
-// 30+ frames during recursive descent."
-Console.WriteLine("[Scenario 2] Recursive computation — Fibonacci(30)");
-var result = Fibonacci(30);                   // ← breakpoint here for stepping
-Console.WriteLine($"[Scenario 2] Complete. Fibonacci(30) = {result}");
-Console.WriteLine();
-
-// ── Scenario 3: Exception ───────────────────────────────────────────────
-// BREAKPOINT TARGET: ThrowsOnPurpose. Hypothesis: "ExceptionStart event
-// captured with type InvalidOperationException."
-Console.WriteLine("[Scenario 3] Caught exception");
-try
-{
-    ThrowsOnPurpose();                        // ← breakpoint here for stepping
-}
-catch (InvalidOperationException ex)
-{
-    Console.WriteLine($"[Scenario 3] Caught: {ex.Message}");
+    Console.WriteLine("[Scenario 1] Tight loop — 2 second CPU spin");
+    var sw = Stopwatch.StartNew();
+    long counter = 0;
+    while (sw.Elapsed.TotalSeconds < 2)
+    {
+        counter++;                                // ← pause target
+    }
+    Console.WriteLine($"[Scenario 1] Complete. Iterations: {counter:N0}");
 }
 
-Console.WriteLine();
-Console.WriteLine("[SteppingHost] All scenarios complete.");
-
-// ── Methods ─────────────────────────────────────────────────────────────
+// ── Scenario 2: Recursive Fibonacci ─────────────────────────────────────
+// BREAKPOINT TARGET: Fibonacci method or call site.
+// Test: step-into Fibonacci, step-out back to caller, step-break-function.
+static void RunFibonacci()
+{
+    Console.WriteLine("[Scenario 2] Recursive computation — Fibonacci(8)");
+    var result = Fibonacci(8);                    // ← breakpoint here for stepping
+    Console.WriteLine($"[Scenario 2] Complete. Fibonacci(8) = {result}");
+}
 
 static long Fibonacci(int n) => n <= 1 ? n : Fibonacci(n - 1) + Fibonacci(n - 2);
 
+// ── Scenario 3: Exception ───────────────────────────────────────────────
+// BREAKPOINT TARGET: ThrowsOnPurpose.
+// Test: step-break-exception with 'all' filter, then run this scenario.
+static void RunException()
+{
+    Console.WriteLine("[Scenario 3] Caught exception");
+    try
+    {
+        ThrowsOnPurpose();                        // ← breakpoint here for stepping
+    }
+    catch (InvalidOperationException ex)
+    {
+        Console.WriteLine($"[Scenario 3] Caught: {ex.Message}");
+    }
+}
+
 static void ThrowsOnPurpose() =>
     throw new InvalidOperationException("DrHook epistemic validation: exception deliberately raised");
+
+// ── Scenario 4: Mutable state ───────────────────────────────────────────
+// BREAKPOINT TARGET: inside the loop body.
+// Test: step-vars with depth 2 to inspect Person fields inside the list.
+static void RunMutableState()
+{
+    Console.WriteLine("[Scenario 4] Mutable state — building a list of Person records");
+    var people = new List<Person>();
+    people.Add(new Person("Alice", 30));          // ← breakpoint here
+    people.Add(new Person("Bob", 25));
+    people.Add(new Person("Carol", 42));
+    Console.WriteLine($"[Scenario 4] Complete. People: {people.Count}");
+    foreach (var p in people)
+        Console.WriteLine($"  {p.Name}, age {p.Age}");
+}
+
+record Person(string Name, int Age);
+
+// ── Scenario 5: Async with state mutation ───────────────────────────────
+// BREAKPOINT TARGET: inside SlowCountAsync.
+// Test: stepping across await points — verifying DAP handles async state machines.
+static async Task RunAsyncWithMutationAsync()
+{
+    Console.WriteLine("[Scenario 5] Async with state mutation");
+    var result = await SlowCountAsync(3);         // ← breakpoint here
+    Console.WriteLine($"[Scenario 5] Complete. Final count: {result}");
+}
+
+static async Task<int> SlowCountAsync(int steps)
+{
+    var counter = 0;
+    for (var i = 0; i < steps; i++)
+    {
+        await Task.Delay(100);                    // ← step-next across await
+        counter += i + 1;
+    }
+    return counter;
+}

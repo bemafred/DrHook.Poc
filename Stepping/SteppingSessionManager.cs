@@ -377,13 +377,22 @@ public sealed class SteppingSessionManager
                     {
                         foreach (var v in variables)
                         {
-                            allVars.Add(new JsonObject
+                            var node = new JsonObject
                             {
                                 ["scope"] = scopeName,
                                 ["name"] = v?["name"]?.DeepClone(),
                                 ["value"] = v?["value"]?.DeepClone(),
                                 ["type"] = v?["type"]?.DeepClone(),
-                            });
+                            };
+
+                            var childRef = v?["variablesReference"]?.GetValue<int>() ?? 0;
+                            if (childRef > 0 && depth > 1)
+                            {
+                                var visited = new HashSet<int>();
+                                node["children"] = await ExpandVariableAsync(childRef, depth - 1, visited, ct);
+                            }
+
+                            allVars.Add(node);
                         }
                     }
                 }
@@ -448,6 +457,39 @@ public sealed class SteppingSessionManager
                 ["line"] = f?["line"]?.DeepClone(),
             }).ToArray())
         };
+    }
+
+    private async Task<JsonArray> ExpandVariableAsync(int variablesReference, int remainingDepth, HashSet<int> visited, CancellationToken ct)
+    {
+        if (!visited.Add(variablesReference) || _client is null)
+            return new JsonArray();
+
+        var response = await _client.GetVariablesAsync(variablesReference, ct);
+        var variables = response["variables"] as JsonArray;
+        var result = new JsonArray();
+
+        if (variables is not null)
+        {
+            foreach (var v in variables)
+            {
+                var node = new JsonObject
+                {
+                    ["name"] = v?["name"]?.DeepClone(),
+                    ["value"] = v?["value"]?.DeepClone(),
+                    ["type"] = v?["type"]?.DeepClone(),
+                };
+
+                var childRef = v?["variablesReference"]?.GetValue<int>() ?? 0;
+                if (childRef > 0 && remainingDepth > 1)
+                {
+                    node["children"] = await ExpandVariableAsync(childRef, remainingDepth - 1, visited, ct);
+                }
+
+                result.Add(node);
+            }
+        }
+
+        return result;
     }
 
     private async Task CleanupAsync()
