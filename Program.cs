@@ -201,15 +201,16 @@ server.RegisterTool(
 server.RegisterTool(
     name: "drhook:step-continue",
     description: """
-        Resume execution until the next breakpoint is hit. The process runs freely.
-        Use after setting a breakpoint with drhook:step-breakpoint or drhook:step-break-function.
-        Use drhook:step-pause to interrupt if no breakpoint is hit.
+        Resume execution. If waitForBreakpoint is true (default), blocks until a
+        breakpoint is hit and returns the stopped state. If false, returns immediately
+        with status 'running' — use drhook:step-pause to interrupt later.
         """,
     inputSchema: """
     {
       "type": "object",
       "properties": {
-        "hypothesis": { "type": "string", "description": "What you expect at the next breakpoint (optional but valuable)" }
+        "hypothesis": { "type": "string", "description": "What you expect at the next breakpoint (optional but valuable)" },
+        "waitForBreakpoint": { "type": "boolean", "description": "If true (default), wait for a breakpoint hit. If false, return immediately for use with step-pause.", "default": true }
       },
       "required": []
     }
@@ -217,7 +218,8 @@ server.RegisterTool(
     handler: async (args, ct) =>
     {
         var hypothesis = args.GetStringOrDefault("hypothesis", null);
-        return await steppingSession.ContinueAsync(hypothesis, ct);
+        var waitForBreakpoint = args.GetBoolOrDefault("waitForBreakpoint", true);
+        return await steppingSession.ContinueAsync(hypothesis, waitForBreakpoint, ct);
     });
 
 server.RegisterTool(

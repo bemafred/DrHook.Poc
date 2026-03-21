@@ -29,7 +29,7 @@ while (true)
 {
     Console.WriteLine("╔══════════════════════════════════════════════════════╗");
     Console.WriteLine("║  Select a scenario:                                  ║");
-    Console.WriteLine("║  [1] Tight loop (2s CPU spin)                        ║");
+    Console.WriteLine("║  [1] Tight loop (30s CPU spin)                       ║");
     Console.WriteLine("║  [2] Recursive Fibonacci(8)                          ║");
     Console.WriteLine("║  [3] Caught exception                                ║");
     Console.WriteLine("║  [4] Mutable state (build a list)                    ║");
@@ -75,10 +75,10 @@ while (true)
 // Test: step-launch → step-continue → select scenario 1 → step-pause mid-loop.
 static void RunTightLoop()
 {
-    Console.WriteLine("[Scenario 1] Tight loop — 2 second CPU spin");
+    Console.WriteLine("[Scenario 1] Tight loop — 30 second CPU spin");
     var sw = Stopwatch.StartNew();
     long counter = 0;
-    while (sw.Elapsed.TotalSeconds < 2)
+    while (sw.Elapsed.TotalSeconds < 30)
     {
         counter++;                                // ← pause target
     }

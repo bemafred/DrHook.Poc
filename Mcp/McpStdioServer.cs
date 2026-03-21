@@ -177,5 +177,5 @@ public sealed class ToolArgs(JsonObject args)
     };
 
     public bool GetBoolOrDefault(string key, bool defaultValue) =>
-        args[key]?.GetValue<bool>() ?? defaultValue;
+        ParseBool(args[key]) ?? defaultValue;
 }

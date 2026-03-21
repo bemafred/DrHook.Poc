@@ -195,7 +195,7 @@ public sealed class SteppingSessionManager
         }
     }
 
-    public async Task<string> ContinueAsync(string? hypothesis, CancellationToken ct)
+    public async Task<string> ContinueAsync(string? hypothesis, bool waitForBreakpoint, CancellationToken ct)
     {
         if (!IsActive || _client is null)
             return Error("No active stepping session. Use drhook:step-launch first.");
@@ -203,26 +203,49 @@ public sealed class SteppingSessionManager
         try
         {
             await _client.ContinueAsync(_activeThreadId, ct);
-            UpdateActiveThread(await _client.WaitForStoppedAsync(ct));
 
-            var state = await GetCurrentStateAsync(ct);
-
-            var result = new JsonObject
+            if (waitForBreakpoint)
             {
-                ["operation"] = "continue",
-                ["step"] = _stepCount,
-                ["assemblyVersion"] = _targetVersion,
-                ["currentState"] = state,
-            };
+                // Block until a breakpoint is hit — the cancellation token is the only timeout.
+                UpdateActiveThread(await _client.WaitForStoppedAsync(ct));
 
-            if (hypothesis is not null)
-                result["hypothesis"] = hypothesis;
+                var state = await GetCurrentStateAsync(ct);
 
-            result["prompt"] = hypothesis is not null
-                ? $"Continued to breakpoint. Compare state with hypothesis: \"{hypothesis}\""
-                : "Continued to breakpoint. Describe what you observe at the current location.";
+                var result = new JsonObject
+                {
+                    ["operation"] = "continue",
+                    ["step"] = _stepCount,
+                    ["assemblyVersion"] = _targetVersion,
+                    ["currentState"] = state,
+                };
 
-            return JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true });
+                if (hypothesis is not null)
+                    result["hypothesis"] = hypothesis;
+
+                result["prompt"] = hypothesis is not null
+                    ? $"Continued to breakpoint. Compare state with hypothesis: \"{hypothesis}\""
+                    : "Continued to breakpoint. Describe what you observe at the current location.";
+
+                return JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true });
+            }
+            else
+            {
+                // Return immediately — caller will use step-pause to interrupt.
+                var result = new JsonObject
+                {
+                    ["operation"] = "continue",
+                    ["step"] = _stepCount,
+                    ["assemblyVersion"] = _targetVersion,
+                    ["status"] = "running",
+                };
+
+                if (hypothesis is not null)
+                    result["hypothesis"] = hypothesis;
+
+                result["prompt"] = "Process running freely. Use drhook:step-pause to interrupt.";
+
+                return JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true });
+            }
         }
         catch (Exception ex)
         {
