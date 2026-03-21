@@ -377,6 +377,8 @@ public sealed class SteppingSessionManager
                     {
                         foreach (var v in variables)
                         {
+                            if (IsNoiseVariable(v)) continue;
+
                             var node = new JsonObject
                             {
                                 ["scope"] = scopeName,
@@ -472,6 +474,8 @@ public sealed class SteppingSessionManager
         {
             foreach (var v in variables)
             {
+                if (IsNoiseVariable(v)) continue;
+
                 var node = new JsonObject
                 {
                     ["name"] = v?["name"]?.DeepClone(),
@@ -490,6 +494,26 @@ public sealed class SteppingSessionManager
         }
 
         return result;
+    }
+
+    private static bool IsNoiseVariable(JsonNode? v)
+    {
+        var name = v?["name"]?.GetValue<string>();
+        var type = v?["type"]?.GetValue<string>();
+
+        // Indexer properties that netcoredbg can't evaluate without an index argument
+        if (type is "System.Reflection.TargetParameterCountException")
+            return true;
+
+        // Interface reimplementations that duplicate the primary members
+        if (name is not null && name.StartsWith("System.Collections."))
+            return true;
+
+        // Self-referential BCL properties that cause redundant expansion
+        if (name is "SyncRoot" or "Static members")
+            return true;
+
+        return false;
     }
 
     private async Task CleanupAsync()

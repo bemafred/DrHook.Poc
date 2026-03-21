@@ -143,10 +143,19 @@ public sealed class McpStdioServer(string name, string version)
 public sealed class ToolArgs(JsonObject args)
 {
     public int GetInt(string key) =>
-        args[key]?.GetValue<int>() ?? throw new ArgumentException($"Missing required argument: {key}");
+        ParseInt(args[key]) ?? throw new ArgumentException($"Missing required argument: {key}");
 
     public int GetIntOrDefault(string key, int defaultValue) =>
-        args[key]?.GetValue<int>() ?? defaultValue;
+        ParseInt(args[key]) ?? defaultValue;
+
+    private static int? ParseInt(JsonNode? node) => node switch
+    {
+        null => null,
+        _ when node.GetValueKind() == JsonValueKind.Number => node.GetValue<int>(),
+        _ when node.GetValueKind() == JsonValueKind.String
+            && int.TryParse(node.GetValue<string>(), out var parsed) => parsed,
+        _ => node.GetValue<int>(),  // let it throw with the original error for unexpected types
+    };
 
     public string GetString(string key) =>
         args[key]?.GetValue<string>() ?? throw new ArgumentException($"Missing required argument: {key}");
@@ -155,7 +164,17 @@ public sealed class ToolArgs(JsonObject args)
         args[key]?.GetValue<string>() ?? defaultValue;
 
     public bool GetBool(string key) =>
-        args[key]?.GetValue<bool>() ?? throw new ArgumentException($"Missing required argument: {key}");
+        ParseBool(args[key]) ?? throw new ArgumentException($"Missing required argument: {key}");
+
+    private static bool? ParseBool(JsonNode? node) => node switch
+    {
+        null => null,
+        _ when node.GetValueKind() == JsonValueKind.True => true,
+        _ when node.GetValueKind() == JsonValueKind.False => false,
+        _ when node.GetValueKind() == JsonValueKind.String
+            && bool.TryParse(node.GetValue<string>(), out var parsed) => parsed,
+        _ => node.GetValue<bool>(),
+    };
 
     public bool GetBoolOrDefault(string key, bool defaultValue) =>
         args[key]?.GetValue<bool>() ?? defaultValue;
