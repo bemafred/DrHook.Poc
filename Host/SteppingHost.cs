@@ -1,3 +1,5 @@
+#!/usr/bin/env -S dotnet run
+
 // DrHook.Poc — SteppingHost
 //
 // A menu-driven CLI host designed as an inspection target for DrHook.
@@ -13,6 +15,8 @@
 // Menu loop allows repeated runs without restarting the host.
 
 using System.Diagnostics;
+
+Console.Clear();
 
 Console.WriteLine("╔══════════════════════════════════════════════════════╗");
 Console.WriteLine("║  DrHook.Poc — SteppingHost                           ║");
