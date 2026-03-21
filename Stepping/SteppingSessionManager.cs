@@ -52,7 +52,7 @@ public sealed class SteppingSessionManager
             await _client.SetBreakpointAsync(sourceFile, line, ct);
             await _client.ConfigurationDoneAsync(ct);
 
-            // Get threads to find the main thread
+            // Get threads — use first thread for initial continue only
             var threads = await _client.GetThreadsAsync(ct);
             var threadArray = threads["threads"] as JsonArray;
             _activeThreadId = threadArray?[0]?["id"]?.GetValue<int>() ?? 1;
@@ -60,8 +60,11 @@ public sealed class SteppingSessionManager
             // Continue execution — process runs until breakpoint is hit.
             // WaitForStoppedAsync blocks until DAP sends a "stopped" event;
             // the cancellation token is the only timeout.
+            // Use the threadId from the stopped event as the active thread —
+            // for async code, the breakpoint may fire on a thread pool thread,
+            // not the main thread.
             await _client.ContinueAsync(_activeThreadId, ct);
-            await _client.WaitForStoppedAsync(ct);
+            UpdateActiveThread(await _client.WaitForStoppedAsync(ct));
 
             // Get current state
             var state = await GetCurrentStateAsync(ct);
@@ -93,7 +96,7 @@ public sealed class SteppingSessionManager
         {
             _stepCount++;
             await _client.StepNextAsync(_activeThreadId, ct);
-            await _client.WaitForStoppedAsync(ct);
+            UpdateActiveThread(await _client.WaitForStoppedAsync(ct));
 
             var state = await GetCurrentStateAsync(ct);
 
@@ -129,7 +132,7 @@ public sealed class SteppingSessionManager
         {
             _stepCount++;
             await _client.StepInAsync(_activeThreadId, ct);
-            await _client.WaitForStoppedAsync(ct);
+            UpdateActiveThread(await _client.WaitForStoppedAsync(ct));
 
             var state = await GetCurrentStateAsync(ct);
 
@@ -165,7 +168,7 @@ public sealed class SteppingSessionManager
         {
             _stepCount++;
             await _client.StepOutAsync(_activeThreadId, ct);
-            await _client.WaitForStoppedAsync(ct);
+            UpdateActiveThread(await _client.WaitForStoppedAsync(ct));
 
             var state = await GetCurrentStateAsync(ct);
 
@@ -200,21 +203,24 @@ public sealed class SteppingSessionManager
         try
         {
             await _client.ContinueAsync(_activeThreadId, ct);
+            UpdateActiveThread(await _client.WaitForStoppedAsync(ct));
+
+            var state = await GetCurrentStateAsync(ct);
 
             var result = new JsonObject
             {
                 ["operation"] = "continue",
                 ["step"] = _stepCount,
                 ["assemblyVersion"] = _targetVersion,
-                ["status"] = "running",
+                ["currentState"] = state,
             };
 
             if (hypothesis is not null)
                 result["hypothesis"] = hypothesis;
 
             result["prompt"] = hypothesis is not null
-                ? $"Process resumed. Expecting to hit breakpoint matching hypothesis: \"{hypothesis}\". Use drhook:step-pause to interrupt."
-                : "Process resumed. It will halt at the next breakpoint. Use drhook:step-pause to interrupt.";
+                ? $"Continued to breakpoint. Compare state with hypothesis: \"{hypothesis}\""
+                : "Continued to breakpoint. Describe what you observe at the current location.";
 
             return JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true });
         }
@@ -232,7 +238,7 @@ public sealed class SteppingSessionManager
         try
         {
             await _client.PauseAsync(_activeThreadId, ct);
-            await _client.WaitForStoppedAsync(ct);
+            UpdateActiveThread(await _client.WaitForStoppedAsync(ct));
 
             var state = await GetCurrentStateAsync(ct);
 
@@ -494,6 +500,13 @@ public sealed class SteppingSessionManager
         }
 
         return result;
+    }
+
+    private void UpdateActiveThread(JsonObject stoppedEvent)
+    {
+        var threadId = stoppedEvent["threadId"]?.GetValue<int>();
+        if (threadId is not null and > 0)
+            _activeThreadId = threadId.Value;
     }
 
     private static bool IsNoiseVariable(JsonNode? v)
